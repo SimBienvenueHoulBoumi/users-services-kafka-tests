@@ -1,12 +1,9 @@
 package primerriva.users_services.config;
 
-import java.util.HashMap;
-import java.util.Map;
-
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringSerializer;
-
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.TopicBuilder;
@@ -14,15 +11,19 @@ import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
 
+import java.util.HashMap;
+import java.util.Map;
+
 @Configuration
 public class KafkaConfig {
 
-    private static final String BOOTSTRAP_SERVERS = "localhost:9092";
+    @Value("${spring.kafka.bootstrap-servers}")
+    private String bootstrapServers;
 
     @Bean
     public ProducerFactory<String, String> producerFactory() {
         Map<String, Object> configProps = new HashMap<>();
-        configProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, BOOTSTRAP_SERVERS);
+        configProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         configProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         configProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         return new DefaultKafkaProducerFactory<>(configProps);
@@ -34,10 +35,47 @@ public class KafkaConfig {
     }
 
     @Bean
+    public NewTopic requestCreateUserTopic() {
+        return TopicBuilder
+        .name("request-create-user")
+        .partitions(1)
+        .replicas(1)
+        .build();
+    }
+
+    @Bean
+    public NewTopic requestUpdateUserTopic() {
+        return TopicBuilder
+        .name("request-update-user")
+        .partitions(1)
+        .replicas(1)
+        .build();
+    }
+
+    @Bean
+    public NewTopic requestDeleteUserTopic() {
+        return TopicBuilder
+        .name("request-delete-user")
+        .partitions(1)
+        .replicas(1)
+        .build();
+    }
+
+    @Bean
+    public NewTopic requestGetUserByEmailTopic() {
+        return TopicBuilder
+        .name("request-get-user-by-email")
+        .partitions(1)
+        .replicas(1)
+        .build();
+    }
+
+    @Bean
     public NewTopic userMicroservicesTopic() {
-        return TopicBuilder.name("user-microservices")
-                .partitions(1)
-                .replicas(1)
-                .build();
+        return TopicBuilder
+        .name("user-microservices")
+        .partitions(1)
+        .replicas(1)
+        .build();
     }
 }
