@@ -1,14 +1,14 @@
 package primerriva.users_services.serviceImpl;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 import java.util.Optional;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
+import org.springframework.kafka.core.KafkaTemplate;
 import primerriva.users_services.dto.UsersDto;
 import primerriva.users_services.exceptions.UserAlreadyExistsException;
 import primerriva.users_services.exceptions.UserNotFoundException;
@@ -18,29 +18,28 @@ import primerriva.users_services.repositories.UsersRepository;
 class UsersServiceImplTest {
 
     private UsersRepository usersRepository;
+    private KafkaTemplate<String, String> kafkaTemplate;
+    private ObjectMapper objectMapper;
     private UsersServiceImpl usersService;
 
     @BeforeEach
     void setUp() {
         usersRepository = mock(UsersRepository.class);
-        usersService = new UsersServiceImpl(usersRepository);
+        objectMapper = new ObjectMapper();
+        usersService = new UsersServiceImpl(usersRepository, kafkaTemplate, objectMapper);
     }
 
     @Test
     void shouldCreateUserSuccessfully() {
         UsersDto dto = new UsersDto("Alice", "alice@mail.com");
-        Users user = new Users();
-        user.setName(dto.getName());
-        user.setEmail(dto.getEmail());
 
         when(usersRepository.findByEmail(dto.getEmail())).thenReturn(null);
-        when(usersRepository.save(any(Users.class))).thenReturn(user);
+        when(usersRepository.save(any(Users.class))).thenAnswer(i -> i.getArgument(0));
 
-        Users result = usersService.createUser(dto);
+        usersService.createUser(dto);
 
-        assertEquals(dto.getName(), result.getName());
-        assertEquals(dto.getEmail(), result.getEmail());
         verify(usersRepository).save(any(Users.class));
+        verify(kafkaTemplate).send(eq("user-created-topic"), any(String.class));
     }
 
     @Test
@@ -55,7 +54,7 @@ class UsersServiceImplTest {
     }
 
     @Test
-    void shouldReturnUserByEmailSuccessfully() {
+    void shouldPublishUserWhenFoundByEmail() {
         String email = "test@mail.com";
         Users user = new Users();
         user.setName("Test");
@@ -63,9 +62,9 @@ class UsersServiceImplTest {
 
         when(usersRepository.findByEmail(email)).thenReturn(user);
 
-        Users result = usersService.getUserByEmail(email);
-        assertEquals(user.getName(), result.getName());
-        assertEquals(user.getEmail(), result.getEmail());
+        usersService.getUserByEmail(email);
+
+        verify(kafkaTemplate).send(eq("user-get-one-topic"), any(String.class));
     }
 
     @Test
@@ -77,44 +76,48 @@ class UsersServiceImplTest {
     }
 
     @Test
-    void shouldReturnUserByEmail() {
+    void shouldUpdateUserSuccessfully() {
         Long id = 1L;
         Users user = new Users();
         user.setId(id);
-        user.setName("Test");
-        user.setEmail("test@mail.com");
+        user.setEmail("old@mail.com");
+        user.setName("Old");
 
-        when(usersRepository.findByEmail("test@mail.com")).thenReturn(user);
+        when(usersRepository.findById(id)).thenReturn(Optional.of(user));
 
-        Users result = usersService.getUserByEmail("test@mail.com");
+        UsersDto updatedDto = new UsersDto("NewName", "new@mail.com");
+        usersService.updateUser(id, updatedDto);
 
-        assertNotNull(result);
-        assertEquals("Test", result.getName());
-        assertEquals("test@mail.com", result.getEmail());
+        verify(usersRepository).save(any(Users.class));
+        verify(kafkaTemplate).send(eq("user-updated-topic"), any(String.class));
     }
-
 
     @Test
     void shouldThrowExceptionWhenUserNotFoundById() {
         when(usersRepository.findById(1L)).thenReturn(Optional.empty());
+
         assertThrows(UserNotFoundException.class, () -> usersService.updateUser(1L, new UsersDto("Name", "email@mail.com")));
     }
 
     @Test
     void shouldDeleteUserSuccessfully() {
         Long id = 1L;
-        when(usersRepository.existsById(id)).thenReturn(true);
-        doNothing().when(usersRepository).deleteById(id);
+        Users user = new Users();
+        user.setId(id);
+        user.setEmail("deleted@mail.com");
+
+        when(usersRepository.findById(id)).thenReturn(Optional.of(user));
 
         usersService.deleteUser(id);
 
         verify(usersRepository).deleteById(id);
+        verify(kafkaTemplate).send(eq("user-deleted-topic"), contains("\"action\":\"DELETED\""));
     }
 
     @Test
     void shouldThrowExceptionWhenDeletingNonexistentUser() {
         Long id = 999L;
-        when(usersRepository.existsById(id)).thenReturn(false);
+        when(usersRepository.findById(id)).thenReturn(Optional.empty());
 
         assertThrows(UserNotFoundException.class, () -> usersService.deleteUser(id));
     }

@@ -1,6 +1,8 @@
 package primerriva.users_services.serviceImpl;
 
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.AllArgsConstructor;
 import primerriva.users_services.dto.UsersDto;
 import primerriva.users_services.exceptions.UserAlreadyExistsException;
@@ -9,23 +11,25 @@ import primerriva.users_services.models.Users;
 import primerriva.users_services.repositories.UsersRepository;
 import primerriva.users_services.services.UsersService;
 
+/**
+ * Implémentation de l'interface UsersService utilisant Kafka pour la communication asynchrone.
+ */
 @Service
 @AllArgsConstructor
 public class UsersServiceImpl implements UsersService {
 
     private final UsersRepository usersRepository;
+    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final ObjectMapper objectMapper;
 
-    /**
-     * Retrieves a user by their email.
-     * 
-     * @param email the email of the user to retrieve
-     * @return the user associated with the provided email
-     * @throws IllegalArgumentException if the email is null or empty
-     * @throws UserNotFoundException if no user is found with the given email
-     */
+    private static final String USER_GET_ONE_TOPIC = "user-get-one-topic";
+    private static final String USER_CREATED_TOPIC = "user-created-topic";
+    private static final String USER_UPDATED_TOPIC = "user-updated-topic";
+    private static final String USER_DELETED_TOPIC = "user-deleted-topic";
+
     @Override
-    public Users getUserByEmail(String email) {
-        if (email == null || email.isEmpty()) {
+    public void getUserByEmail(String email) {
+        if (email == null || email.isBlank()) {
             throw new IllegalArgumentException("Email must not be null or empty");
         }
 
@@ -33,64 +37,75 @@ public class UsersServiceImpl implements UsersService {
         if (user == null) {
             throw new UserNotFoundException(email);
         }
-        return user;
+
+        UsersDto userDto = new UsersDto(user.getName(), user.getEmail());
+        sendToKafka(USER_GET_ONE_TOPIC, userDto);
     }
 
-    /**
-     * Creates a new user with the provided details.
-     * 
-     * @param user the details of the user to create
-     * @return the created user
-     * @throws IllegalArgumentException if the user is null
-     * @throws UserAlreadyExistsException if a user with the same email already exists
-     */
     @Override
-    public Users createUser(UsersDto user) {
-        if (user == null) {
-            throw new IllegalArgumentException("User must not be null");
+    public void createUser(UsersDto userDto) {
+        if (userDto == null || userDto.getName() == null || userDto.getEmail() == null) {
+            throw new IllegalArgumentException("User name and email must not be null");
         }
 
-        if (usersRepository.findByEmail(user.getEmail()) != null) {
-            throw new UserAlreadyExistsException(user.getEmail());
+        if (usersRepository.findByEmail(userDto.getEmail()) != null) {
+            throw new UserAlreadyExistsException(userDto.getEmail());
         }
 
         Users newUser = new Users();
-        newUser.setName(user.getName());
-        newUser.setEmail(user.getEmail());
+        newUser.setName(userDto.getName());
+        newUser.setEmail(userDto.getEmail());
+        usersRepository.save(newUser);
 
-        return usersRepository.save(newUser);
+        sendToKafka(USER_CREATED_TOPIC, userDto);
     }
 
-    /**
-     * Updates the user with the given ID.
-     * 
-     * @param id the ID of the user to update
-     * @param user the updated details of the user
-     * @return the updated user
-     * @throws UserNotFoundException if no user is found with the given ID
-     */
     @Override
-    public Users updateUser(Long id, UsersDto user) {
+    public void updateUser(Long id, UsersDto userDto) {
+        if (userDto == null) {
+            throw new IllegalArgumentException("User DTO must not be null");
+        }
+
         Users existingUser = usersRepository.findById(id)
                 .orElseThrow(() -> new UserNotFoundException(id));
 
-        existingUser.setName(user.getName());
-        existingUser.setEmail(user.getEmail());
+        existingUser.setName(userDto.getName());
+        existingUser.setEmail(userDto.getEmail());
 
-        return usersRepository.save(existingUser);
+        usersRepository.save(existingUser);
+
+        sendToKafka(USER_UPDATED_TOPIC, userDto);
+    }
+
+    @Override
+    public void deleteUser(Long id) {
+        Users userToDelete = usersRepository.findById(id)
+                .orElseThrow(() -> new UserNotFoundException(id));
+
+        usersRepository.deleteById(id);
+
+        // on envoie un objet pour rester cohérent avec les autres événements
+        DeletedUserEvent deletedEvent = new DeletedUserEvent(id, userToDelete.getEmail(), "DELETED");
+        sendToKafka(USER_DELETED_TOPIC, deletedEvent);
     }
 
     /**
-     * Deletes the user with the given ID.
-     * 
-     * @param id the ID of the user to delete
-     * @throws UserNotFoundException if no user is found with the given ID
+     * Envoie un objet ou une chaîne déjà serialisée à Kafka (en JSON).
+     *
+     * @param topic le nom du topic Kafka
+     * @param data l'objet à envoyer (ou une String JSON)
      */
-    @Override
-    public void deleteUser(Long id) {
-        if (!usersRepository.existsById(id)) {
-            throw new UserNotFoundException(id);
+    private void sendToKafka(String topic, Object data) {
+        try {
+            String json = (data instanceof String) ? (String) data : objectMapper.writeValueAsString(data);
+            kafkaTemplate.send(topic, json);
+        } catch (Exception e) {
+            throw new RuntimeException("Erreur lors de l'envoi du message Kafka", e);
         }
-        usersRepository.deleteById(id);
     }
+
+    /**
+     * Représente l’événement envoyé lors d’une suppression d’utilisateur.
+     */
+    private record DeletedUserEvent(Long id, String email, String action) {}
 }
