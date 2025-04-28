@@ -1,6 +1,7 @@
 package primerriva.users_services.services;
 
 import primerriva.users_services.dto.UsersDto;
+import primerriva.users_services.models.Users;
 
 public interface UsersService {
     /**
@@ -9,7 +10,7 @@ public interface UsersService {
      * @param id the id of the user
      * @return the user
      */
-    void getUserByEmail(String email);
+    Users getUserByEmail(String email);
 
     /**
      * This method is used to create a new user.

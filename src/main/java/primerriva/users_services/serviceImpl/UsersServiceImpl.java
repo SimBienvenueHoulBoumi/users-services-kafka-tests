@@ -1,22 +1,28 @@
 package primerriva.users_services.serviceImpl;
 
-import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.stereotype.Service;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.AllArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.stereotype.Service;
+import primerriva.users_services.dto.UserEventDto;
 import primerriva.users_services.dto.UsersDto;
 import primerriva.users_services.exceptions.UserAlreadyExistsException;
 import primerriva.users_services.exceptions.UserNotFoundException;
+import primerriva.users_services.mapper.UsersMapper;
 import primerriva.users_services.models.Users;
 import primerriva.users_services.repositories.UsersRepository;
 import primerriva.users_services.services.UsersService;
 
-/**
- * Implémentation de l'interface UsersService utilisant Kafka pour la communication asynchrone.
- */
+import java.time.LocalDateTime;
+
 @Service
 @AllArgsConstructor
 public class UsersServiceImpl implements UsersService {
+
+    private static final Logger logger = LoggerFactory.getLogger(UsersServiceImpl.class);
 
     private final UsersRepository usersRepository;
     private final KafkaTemplate<String, String> kafkaTemplate;
@@ -28,7 +34,7 @@ public class UsersServiceImpl implements UsersService {
     private static final String USER_DELETED_TOPIC = "user-deleted-topic";
 
     @Override
-    public void getUserByEmail(String email) {
+    public Users getUserByEmail(String email) {
         if (email == null || email.isBlank()) {
             throw new IllegalArgumentException("Email must not be null or empty");
         }
@@ -38,26 +44,43 @@ public class UsersServiceImpl implements UsersService {
             throw new UserNotFoundException(email);
         }
 
-        UsersDto userDto = new UsersDto(user.getName(), user.getEmail());
-        sendToKafka(USER_GET_ONE_TOPIC, userDto);
+        UserEventDto eventDto = UserEventDto.builder()
+                .id(user.getId())
+                .name(user.getName())
+                .email(user.getEmail())
+                .action("GET_ONE")
+                .timestamp(LocalDateTime.now())
+                .build();
+        sendToKafka(USER_GET_ONE_TOPIC, eventDto);
+
+        return user;
     }
 
     @Override
     public void createUser(UsersDto userDto) {
-        if (userDto == null || userDto.getName() == null || userDto.getEmail() == null) {
-            throw new IllegalArgumentException("User name and email must not be null");
+        if (userDto == null || userDto.getName() == null || userDto.getEmail() == null || userDto.getEmail().isBlank()) {
+            throw new IllegalArgumentException("User name and email must not be null or empty");
+        }
+
+        if (!userDto.getEmail().matches("^[A-Za-z0-9+_.-]+@(.+)$")) {
+            throw new IllegalArgumentException("Invalid email format");
         }
 
         if (usersRepository.findByEmail(userDto.getEmail()) != null) {
             throw new UserAlreadyExistsException(userDto.getEmail());
         }
 
-        Users newUser = new Users();
-        newUser.setName(userDto.getName());
-        newUser.setEmail(userDto.getEmail());
-        usersRepository.save(newUser);
+        Users newUser = UsersMapper.toEntity(userDto);
+        newUser = usersRepository.save(newUser);
 
-        sendToKafka(USER_CREATED_TOPIC, userDto);
+        UserEventDto eventDto = UserEventDto.builder()
+                .id(newUser.getId())
+                .name(userDto.getName())
+                .email(userDto.getEmail())
+                .action("CREATED")
+                .timestamp(LocalDateTime.now())
+                .build();
+        sendToKafka(USER_CREATED_TOPIC, eventDto);
     }
 
     @Override
@@ -69,12 +92,20 @@ public class UsersServiceImpl implements UsersService {
         Users existingUser = usersRepository.findById(id)
                 .orElseThrow(() -> new UserNotFoundException(id));
 
-        existingUser.setName(userDto.getName());
-        existingUser.setEmail(userDto.getEmail());
+        Users updatedUser = UsersMapper.toEntity(userDto);
+        existingUser.setName(updatedUser.getName());
+        existingUser.setEmail(updatedUser.getEmail());
 
         usersRepository.save(existingUser);
 
-        sendToKafka(USER_UPDATED_TOPIC, userDto);
+        UserEventDto eventDto = UserEventDto.builder()
+                .id(id)
+                .name(userDto.getName())
+                .email(userDto.getEmail())
+                .action("UPDATED")
+                .timestamp(LocalDateTime.now())
+                .build();
+        sendToKafka(USER_UPDATED_TOPIC, eventDto);
     }
 
     @Override
@@ -84,28 +115,23 @@ public class UsersServiceImpl implements UsersService {
 
         usersRepository.deleteById(id);
 
-        // on envoie un objet pour rester cohérent avec les autres événements
-        DeletedUserEvent deletedEvent = new DeletedUserEvent(id, userToDelete.getEmail(), "DELETED");
-        sendToKafka(USER_DELETED_TOPIC, deletedEvent);
+        UserEventDto eventDto = UserEventDto.builder()
+                .id(id)
+                .email(userToDelete.getEmail())
+                .action("DELETED")
+                .timestamp(LocalDateTime.now())
+                .build();
+        sendToKafka(USER_DELETED_TOPIC, eventDto);
     }
 
-    /**
-     * Envoie un objet ou une chaîne déjà serialisée à Kafka (en JSON).
-     *
-     * @param topic le nom du topic Kafka
-     * @param data l'objet à envoyer (ou une String JSON)
-     */
     private void sendToKafka(String topic, Object data) {
         try {
-            String json = (data instanceof String) ? (String) data : objectMapper.writeValueAsString(data);
+            String json = objectMapper.writeValueAsString(data);
+            logger.debug("Envoi du message au topic {}: {}", topic, json);
             kafkaTemplate.send(topic, json);
-        } catch (Exception e) {
+        } catch (JsonProcessingException e) {
+            logger.error("Erreur lors de l'envoi du message au topic {}: {}", topic, e.getMessage(), e);
             throw new RuntimeException("Erreur lors de l'envoi du message Kafka", e);
         }
     }
-
-    /**
-     * Représente l’événement envoyé lors d’une suppression d’utilisateur.
-     */
-    private record DeletedUserEvent(Long id, String email, String action) {}
 }

@@ -35,45 +35,36 @@ public class KafkaConfig {
     }
 
     @Bean
-    public NewTopic requestCreateUserTopic() {
+    public NewTopic userGetOneTopic() {
         return TopicBuilder
-        .name("request-create-user")
+        .name("user-get-one-topic")
         .partitions(1)
         .replicas(1)
         .build();
     }
 
     @Bean
-    public NewTopic requestUpdateUserTopic() {
+    public NewTopic userCreatedTopic() {
         return TopicBuilder
-        .name("request-update-user")
+        .name("user-created-topic")
         .partitions(1)
         .replicas(1)
         .build();
     }
 
     @Bean
-    public NewTopic requestDeleteUserTopic() {
+    public NewTopic userUpdatedTopic() {
         return TopicBuilder
-        .name("request-delete-user")
+        .name("user-updated-topic")
         .partitions(1)
         .replicas(1)
         .build();
     }
 
     @Bean
-    public NewTopic requestGetUserByEmailTopic() {
+    public NewTopic userDeletedTopic() {
         return TopicBuilder
-        .name("request-get-user-by-email")
-        .partitions(1)
-        .replicas(1)
-        .build();
-    }
-
-    @Bean
-    public NewTopic userMicroservicesTopic() {
-        return TopicBuilder
-        .name("user-microservices")
+        .name("user-deleted-topic")
         .partitions(1)
         .replicas(1)
         .build();
