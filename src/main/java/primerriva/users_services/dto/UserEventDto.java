@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
 @Builder
 public class UserEventDto {
     private Long id;
-    private String name;
+    private String username;
     private String email;
     private String password;
     private String action; 

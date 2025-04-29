@@ -4,31 +4,21 @@ import primerriva.users_services.dto.UsersDto;
 import primerriva.users_services.models.Users;
 
 public class UsersMapper {
-    public static Users toEntity(UsersDto dto) {
-        if (dto == null) return null;
 
+    public static Users toEntity(UsersDto dto) {
+        if (dto == null) {
+            throw new IllegalArgumentException("UsersDto must not be null");
+        }
+        if (dto.getUsername() == null || dto.getUsername().isBlank()) {
+            throw new IllegalArgumentException("Username must not be null or empty");
+        }
+        if (dto.getEmail() == null || dto.getEmail().isBlank()) {
+            throw new IllegalArgumentException("Email must not be null or empty");
+        }
         return Users.builder()
-                .name(dto.getName())
+                .username(dto.getUsername())
                 .email(dto.getEmail())
                 .password(dto.getPassword())
-                .build();
-    }
-    public static UsersDto toDto(Users entity) {
-        if (entity == null) return null;
-
-        return UsersDto.builder()
-                .name(entity.getName())
-                .email(entity.getEmail())
-                .password(entity.getPassword())
-                .build();
-    }
-    public static UsersDto toDtoWithId(Users entity) {
-        if (entity == null) return null;
-
-        return UsersDto.builder()
-                .name(entity.getName())
-                .email(entity.getEmail())
-                .password(entity.getPassword())
                 .build();
     }
 }
