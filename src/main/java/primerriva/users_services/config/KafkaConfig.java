@@ -10,7 +10,7 @@ import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
 
-import com.fasterxml.jackson.databind.JsonSerializable;
+import primerriva.users_services.kafka.KafkaTopics;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -21,19 +21,26 @@ public class KafkaConfig {
     @Value("${spring.kafka.bootstrap-servers}")
     private String bootstrapServers;
 
-    private static final String REQUEST_GET_ONE_USER_TOPIC = "request-user-get-one-topic";
-    private static final String REQUEST_CREATE_USER_TOPIC = "request-user-created-topic";
-    private static final String REQUEST_UPDATE_USER_TOPIC = "request-user-updated-topic";
-    private static final String REQUEST_DELETE_USER_TOPIC = "request-user-deleted-topic";
-    private static final String REQUEST_GET_USER_BY_USERNAME_TOPIC = "request-user-get-by-username-topic";
-    private static final String RESPONSE_USER_DETAILS_TOPIC = "response-user-details-topic";
+    @Value("${kafka.topic.partitions:1}")
+    private int partitions;
+
+    @Value("${kafka.topic.replication-factor:1}")
+    private short replicationFactor;
+
+    public static final String GET_USER_BY_USERNAME = "request-get-user-by-username";
+    public static final String CREATE_USER = "request-user-create-topic";
+    public static final String GET_ONE_USER = "request-user-get-one-topic";
+    public static final String UPDATE_USER = "request-user-updated-topic";
+    public static final String DELETE_USER = "request-user-deleted-topic";
 
     @Bean
     public ProducerFactory<String, String> producerFactory() {
         Map<String, Object> configProps = new HashMap<>();
         configProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         configProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-        configProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializable.class);
+        configProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        configProps.put(ProducerConfig.RETRIES_CONFIG, 3);
+        configProps.put(ProducerConfig.ACKS_CONFIG, "all");
         return new DefaultKafkaProducerFactory<>(configProps);
     }
 
@@ -43,32 +50,27 @@ public class KafkaConfig {
     }
 
     @Bean
-    public NewTopic getUserByUsernameTopic() {
-        return new NewTopic(REQUEST_GET_USER_BY_USERNAME_TOPIC, 1, (short) 1);
+    public NewTopic userByUsernameTopic() {
+        return new NewTopic(KafkaTopics.GET_USER_BY_USERNAME, partitions, replicationFactor);
     }
 
     @Bean
     public NewTopic createUserTopic() {
-        return new NewTopic(REQUEST_CREATE_USER_TOPIC, 1, (short) 1);
+        return new NewTopic(KafkaTopics.CREATE_USER, partitions, replicationFactor);
     }
 
     @Bean
     public NewTopic getOneUserTopic() {
-        return new NewTopic(REQUEST_GET_ONE_USER_TOPIC, 1, (short) 1);
+        return new NewTopic(KafkaTopics.GET_ONE_USER, partitions, replicationFactor);
     }
 
     @Bean
     public NewTopic updateUserTopic() {
-        return new NewTopic(REQUEST_UPDATE_USER_TOPIC, 1, (short) 1);
+        return new NewTopic(KafkaTopics.UPDATE_USER, partitions, replicationFactor);
     }
 
     @Bean
     public NewTopic deleteUserTopic() {
-        return new NewTopic(REQUEST_DELETE_USER_TOPIC, 1, (short) 1);
-    }
-
-    @Bean
-    public NewTopic responseUserDetailsTopic() {
-        return new NewTopic(RESPONSE_USER_DETAILS_TOPIC, 1, (short) 1);
+        return new NewTopic(KafkaTopics.DELETE_USER, partitions, replicationFactor);
     }
 }
