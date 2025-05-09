@@ -11,9 +11,6 @@ import primerriva.users_services.services.UsersService;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Listens to Kafka topics for user-related events and processes requests.
- */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -45,7 +42,7 @@ public class KafkaUserEventListener {
             String correlationId = kafkaMessageProcessor.getRequiredString(payload, "correlationId");
             String name = kafkaMessageProcessor.getRequiredString(payload, "name");
             String email = kafkaMessageProcessor.getRequiredString(payload, "email");
-            String password = (String) payload.get("password");
+            String password = kafkaMessageProcessor.getRequiredString(payload, "password");
             log.debug("Creating user: name={}, email={}", name, email);
 
             UsersDto userDto = UsersDto.builder()
@@ -89,7 +86,7 @@ public class KafkaUserEventListener {
             Long id = kafkaMessageProcessor.getRequiredLong(payload, "id");
             String username = kafkaMessageProcessor.getRequiredString(payload, "username");
             String email = kafkaMessageProcessor.getRequiredString(payload, "email");
-            String password = (String) payload.get("password");
+            String password = kafkaMessageProcessor.getRequiredString(payload, "password");
             log.debug("Updating user: id={}, username={}, email={}", id, username, email);
 
             UsersDto userDto = UsersDto.builder()
@@ -97,6 +94,7 @@ public class KafkaUserEventListener {
                 .email(email)
                 .password(password)
                 .build();
+
             usersService.updateUser(id, userDto);
             kafkaMessageProcessor.sendSuccessResponse(correlationId, Map.of(
                 "id", id,
